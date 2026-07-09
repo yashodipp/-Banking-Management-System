@@ -1,0 +1,332 @@
+BANK SYSTEM DEVELOPMENT - PHASE WISE GUIDE
+========================================
+
+PHASE 1: PROJECT OVERVIEW
+------------------------
+Goal: Build a banking system that can:
+- Create bank accounts
+- Login to accounts with security (PIN)
+- Check account balance
+- Deposit money
+- Withdraw money
+- Keep track of all transactions (audit trail)
+- Store everything in a database
+
+What you'll learn:
+- Object Oriented Programming (OOP)
+- Database connectivity
+- CRUD operations (Create, Read, Update, Delete)
+- Data security basics
+
+PHASE 2: DATABASE SETUP
+----------------------
+Step 1: Install PostgreSQL database
+Step 2: Create Database.py file
+Step 3: Write code to connect to database
+Step 4: Test the connection works
+
+What you'll create:
+- Database.py - handles database connection
+- BankData database with accounts and audit tables
+
+PHASE 3: ACCOUNT CLASS
+---------------------
+Step 1: Create Account class
+Step 2: Add private attributes (__account_number, __name, __pin, __balance)
+Step 3: Add getter methods (get_account_number, get_name, etc.)
+Step 4: Add setter methods (set_name, set_pin, etc.)
+Step 5: Add business methods (deposit, withdraw)
+
+Why private attributes?
+- Keep data safe
+- Control how data is accessed
+- Follow OOP principles
+
+MAIN CLASSES IN OUR SYSTEM
+-------------------------
+
+We will create 3 main classes to organize our banking system:
+
+1. Account Class
+   - Purpose: Represents a single bank account
+   - Responsibilities:
+     * Store account information (number, name, PIN, balance)
+     * Handle account operations (deposit, withdraw)
+     * Manage data privacy with private attributes
+   - Benefits:
+     * Encapsulates all account-related functionality
+     * Keeps account data secure
+     * Makes code reusable and organized
+
+2. Audit Class
+   - Purpose: Handles all transaction logging
+   - Responsibilities:
+     * Record all banking actions (create, deposit, withdraw, delete)
+     * Retrieve transaction history
+     * Manage audit data
+   - Benefits:
+     * Separates logging from business logic
+     * Centralizes all audit functionality
+     * Makes it easy to track all transactions
+
+3. BankSystem Class
+   - Purpose: Coordinates all banking operations
+   - Responsibilities:
+     * Manage account creation, reading, updating, deletion
+     * Coordinate between Account and Audit classes
+     * Handle user requests and database operations
+   - Benefits:
+     * Provides single point of control for the entire system
+     * Simplifies complex operations into simple method calls
+     * Makes the system easy to use and maintain
+
+How These Classes Work Together:
+- BankSystem uses Account class to manage account data
+- BankSystem uses Audit class to log all transactions
+- Account handles individual account operations
+- Audit handles all logging and reporting
+- Database.py provides database connectivity for all classes
+
+DETAILED METHOD EXPLANATIONS
+--------------------------
+
+ACCOUNT CLASS METHODS:
+
+__init__(self, name, pin, account_number)
+- Purpose: Creates a new Account object
+- What it does: Sets up initial values for account (name, PIN, account number, balance)
+- Parameters: 
+  * name: Account holder's name
+  * pin: 4-digit security PIN
+  * account_number: Unique account identifier (auto-generated if not provided)
+
+__generate_account_number()
+- Purpose: Creates a unique account number
+- What it does: Generates a random 10-character alphanumeric string
+- Returns: String with account number
+
+get_account_number()
+- Purpose: Gets the account number
+- What it does: Returns the private account number
+- Returns: String with account number
+
+get_name()
+- Purpose: Gets the account holder's name
+- What it does: Returns the private name attribute
+- Returns: String with account holder's name
+
+get_balance()
+- Purpose: Gets current account balance
+- What it does: Returns the private balance attribute
+- Returns: Float/Decimal with current balance
+
+get_pin()
+- Purpose: Gets the account PIN
+- What it does: Returns the private PIN (used for verification)
+- Returns: String with 4-digit PIN
+
+set_name(name)
+- Purpose: Updates account holder's name
+- What it does: Changes the private name attribute
+- Parameter: New name for the account holder
+
+set_pin(pin)
+- Purpose: Updates account PIN
+- What it does: Changes the private PIN attribute
+- Parameter: New 4-digit PIN for security
+
+set_balance(balance)
+- Purpose: Updates account balance
+- What it does: Changes the private balance attribute
+- Parameter: New balance amount
+
+deposit(amount)
+- Purpose: Adds money to account
+- What it does: Increases balance by amount (doesn't save to database)
+- Parameter: Amount to deposit
+- Returns: True if successful, False if amount <= 0
+
+withdraw(amount)
+- Purpose: Removes money from account
+- What it does: Decreases balance by amount (doesn't save to database)
+- Parameter: Amount to withdraw
+- Returns: True if successful, False if amount <= 0 or insufficient funds
+
+load_from_db(account_number, pin)
+- Purpose: Loads account data from database
+- What it does: Creates Account object with data from database
+- Parameters: 
+  * account_number: Account to load
+  * pin: Security PIN for verification
+- Returns: Account object if found and PIN matches, None otherwise
+
+save_to_db()
+- Purpose: Saves account to database
+- What it does: Either creates new record or updates existing record
+- Returns: True if successful, False otherwise
+
+delete_from_db()
+- Purpose: Removes account from database
+- What it does: Permanently deletes account record
+- Returns: True if successful, False otherwise
+
+AUDIT CLASS METHODS:
+
+log_action(account_number, holder_name, action, amount)
+- Purpose: Records a banking action in the audit trail
+- What it does: Inserts a record into the audit table with transaction details
+- Parameters:
+  * account_number: Account the action relates to
+  * holder_name: Name of the account holder
+  * action: Description of what happened (e.g., "Amount deposited")
+  * amount: Money involved in the transaction (default: 0.0)
+- Returns: True if successful, False otherwise
+- Why Static: Doesn't need instance data, just performs a database operation
+
+get_audit_logs(account_number)
+- Purpose: Retrieves transaction history for a specific account
+- What it does: Queries the audit table for all records matching the account number
+- Parameter: account_number - Account to get history for
+- Returns: List of dictionaries containing transaction details
+- Why Static: Independent function that just queries database, no instance data needed
+
+get_all_audit_logs()
+- Purpose: Gets transaction history for all accounts (admin function)
+- What it does: Queries the audit table for all records
+- Returns: List of dictionaries containing all transaction details
+- Why Static: Admin function that doesn't depend on instance data
+
+clear_audit_logs()
+- Purpose: Removes all audit records (admin function)
+- What it does: Deletes all records from the audit table
+- Returns: True if successful, False otherwise
+- Why Static: Maintenance function that doesn't require instance data
+
+Why Use Static Methods for Audit Class?
+-------------------------------------
+1. No Instance Data: Audit methods don't need to store or access instance variables
+2. Utility Functions: They're essentially database utility functions for logging
+3. Easy Access: Can call methods directly on the class without creating instances
+4. Memory Efficient: No need to create Audit objects for simple logging operations
+5. Clear Purpose: Each method has a single, well-defined purpose
+
+BANK SYSTEM CLASS METHODS:
+
+create_account(name, pin)
+- Purpose: Creates a new bank account
+- What it does: Makes new Account object and saves to database
+- Parameters: 
+  * name: Account holder's name
+  * pin: 4-digit security PIN
+- Returns: Account object if successful, None otherwise
+
+read_account(account_number, pin)
+- Purpose: Reads account from database
+- What it does: Loads Account object from database if credentials match
+- Parameters: 
+  * account_number: Account to load
+  * pin: Security PIN for verification
+- Returns: Account object if found and PIN matches, None otherwise
+
+update_account(account)
+- Purpose: Updates account information
+- What it does: Saves changes to existing account
+- Parameter: Account object with updated information
+- Returns: True if successful, False otherwise
+
+delete_account(account_number, pin)
+- Purpose: Deletes an account
+- What it does: Removes account from database after verification
+- Parameters: 
+  * account_number: Account to delete
+  * pin: Security PIN for verification
+- Returns: True if successful, False otherwise
+
+deposit(account_number, pin, amount)
+- Purpose: Deposits money into account
+- What it does: Loads account, adds amount, saves changes, logs transaction
+- Parameters: 
+  * account_number: Target account
+  * pin: Security PIN
+  * amount: Amount to deposit
+- Returns: True if successful, False otherwise
+
+withdraw(account_number, pin, amount)
+- Purpose: Withdraws money from account
+- What it does: Loads account, removes amount, saves changes, logs transaction
+- Parameters: 
+  * account_number: Target account
+  * pin: Security PIN
+  * amount: Amount to withdraw
+- Returns: True if successful, False otherwise
+
+get_account_balance(account_number, pin)
+- Purpose: Gets current account balance
+- What it does: Loads account and returns balance
+- Parameters: 
+  * account_number: Target account
+  * pin: Security PIN
+- Returns: Balance amount if successful, None otherwise
+
+get_audit_logs(account_number)
+- Purpose: Gets transaction history for account
+- What it does: Retrieves all audit records for specific account
+- Parameter: account_number: Target account
+- Returns: List of transaction records
+
+PHASE 4: DATABASE OPERATIONS
+---------------------------
+Step 1: Create functions for each operation:
+- create_account - INSERT new record
+- read_account - SELECT record
+- update_account - UPDATE record
+- delete_account - DELETE record
+- log_transaction - INSERT into audit table
+
+Step 2: Handle errors gracefully
+Step 3: Close database connections properly
+
+PHASE 5: USER INTERFACE
+----------------------
+Step 1: Create menu system
+Step 2: Handle user input
+Step 3: Call appropriate functions based on user choice
+Step 4: Display results nicely
+
+Menu options:
+- Create Account
+- Login
+- Check Balance
+- Deposit Money
+- Withdraw Money
+- Transaction History
+- Update Account
+- Delete Account
+
+PHASE 6: SECURITY & TESTING
+--------------------------
+Step 1: Always verify PIN before operations
+Step 2: Prevent negative balances
+Step 3: Log all actions for audit trail
+Step 4: Test all functions thoroughly
+Step 5: Handle edge cases (wrong PIN, insufficient funds, etc.)
+
+PHASE 7: ENHANCEMENTS (Optional)
+-------------------------------
+Step 1: Add PostgreSQL advanced features
+- Triggers (automatic actions)
+- Materialized Views (fast reports)
+- Indexes (faster searches)
+- Stored Procedures (reusable operations)
+
+Step 2: Create Web Interface (Streamlit)
+Step 3: Add admin features
+Step 4: Implement backup/restore
+
+REMEMBER
+--------
+1. Start simple and add features gradually
+2. Test each phase before moving to the next
+3. Keep your code organized and commented
+4. Follow security best practices
+5. Ask for help when stuck
