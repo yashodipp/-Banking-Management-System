@@ -215,7 +215,7 @@ def format_money(value):
         amount = Decimal(str(value or 0))
     except Exception:
         amount = Decimal("0")
-    return f"${amount:,.2f}"
+    return f"Rs. {amount:,.2f}"
 
 
 def parse_money(value, field_name="Amount", allow_zero=False):
@@ -568,6 +568,59 @@ def post_transaction(account_number, pin, transaction_type, amount):
         connection.close()
 
 
+def delete_customer_account(account_number, pin):
+    connection = open_connection()
+    if not connection:
+        return False, "Database connection failed."
+
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT name, pin, balance
+            FROM accounts
+            WHERE account_number = %s
+            FOR UPDATE
+            """,
+            (account_number,),
+        )
+        result = cursor.fetchone()
+
+        if not result or not verify_pin(pin, result[1]):
+            connection.rollback()
+            cursor.close()
+            return False, "Account deletion failed. Invalid PIN."
+
+        holder_name = result[0]
+
+        # Existing audit rows reference accounts through a foreign key.
+        # Set old audit references to NULL before deleting the account record.
+        cursor.execute(
+            "UPDATE audit SET account_number = NULL WHERE account_number = %s",
+            (account_number,),
+        )
+        cursor.execute(
+            "DELETE FROM accounts WHERE account_number = %s",
+            (account_number,),
+        )
+        cursor.execute(
+            """
+            INSERT INTO audit (account_number, holder_name, action, amount)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (None, holder_name, f"Account Deleted ({account_number})", Decimal("0.00")),
+        )
+
+        connection.commit()
+        cursor.close()
+        return True, "Account deleted successfully."
+    except Exception as error:
+        connection.rollback()
+        return False, f"Account deletion failed: {error}"
+    finally:
+        connection.close()
+
+
 def fetch_summary_metrics():
     metrics = {
         "accounts": 0,
@@ -727,6 +780,8 @@ def init_session_state():
         st.session_state.customer_pin = ""
     if "last_created_account" not in st.session_state:
         st.session_state.last_created_account = None
+    if "flash_success" not in st.session_state:
+        st.session_state.flash_success = ""
 
 
 def change_page(page_name):
@@ -950,6 +1005,10 @@ def render_login_page():
         "Secure account access",
     )
 
+    if st.session_state.flash_success:
+        st.success(st.session_state.flash_success)
+        st.session_state.flash_success = ""
+
     if st.session_state.customer:
         st.success("You are already logged in.")
 
@@ -1077,6 +1136,39 @@ def render_account_dashboard_page():
 
     st.markdown('<div class="section-label">Account Activity</div>', unsafe_allow_html=True)
     show_logs_table(fetch_audit_logs(account_number=customer["account_number"]), include_account=False)
+
+    st.markdown('<div class="section-label">Account Management</div>', unsafe_allow_html=True)
+
+    with st.expander("Delete account permanently"):
+        st.warning("This will permanently delete your account from the accounts table.")
+
+        with st.form("delete_account_form"):
+            confirm_checkbox = st.checkbox("I understand this account will be permanently deleted.")
+            account_number_confirm = st.text_input("Type your account number to confirm")
+            delete_pin = st.text_input("Enter PIN", type="password", max_chars=4)
+            delete_submitted = st.form_submit_button("Delete Account", use_container_width=True)
+
+        if delete_submitted:
+            if not confirm_checkbox:
+                st.error("Please tick the confirmation checkbox.")
+            elif account_number_confirm.strip().upper() != customer["account_number"]:
+                st.error("Account number confirmation does not match.")
+            else:
+                pin_error = validate_pin(delete_pin)
+
+                if pin_error:
+                    st.error(pin_error)
+                else:
+                    success, message = delete_customer_account(customer["account_number"], delete_pin)
+
+                    if success:
+                        st.session_state.customer = None
+                        st.session_state.customer_pin = ""
+                        st.session_state.flash_success = message
+                        st.session_state.selected_page = LOGIN_PAGE
+                        rerun_app()
+                    else:
+                        st.error(message)
 
 
 def render_admin_audit_page():
