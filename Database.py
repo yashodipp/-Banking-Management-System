@@ -52,6 +52,17 @@ def running_on_streamlit_cloud():
 class _SQLiteCursorWrapper:
     def __init__(self, cur):
         self._cur = cur
+    def _convert_params(self, params):
+        if not params:
+            return params
+        converted = []
+        for p in params:
+            # sqlite3 doesn't support Decimal - convert to float/str
+            if p.__class__.__name__ == "Decimal":
+                converted.append(float(p))
+            else:
+                converted.append(p)
+        return tuple(converted)
     def execute(self, query, params=None):
         if not isinstance(query, str):
             query = str(query)
@@ -64,6 +75,8 @@ class _SQLiteCursorWrapper:
             return self
         if params is None:
             params = ()
+        else:
+            params = self._convert_params(params)
         try:
             if params:
                 return self._cur.execute(q, params)
