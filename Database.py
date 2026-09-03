@@ -1,7 +1,9 @@
 import os
 import getpass
+import sqlite3
 import psycopg2
 from typing import Optional
+from psycopg2 import OperationalError
 
 def load_env_file(path=".env"):
     if not os.path.exists(path):
@@ -43,13 +45,94 @@ def _resolve_database_url():
         or get_streamlit_secret("postgres", "url")
     )
 
-def connect_to_database() -> Optional[psycopg2.extensions.connection]:
-    """
-    Connect to PostgreSQL. Works locally and on Streamlit Cloud.
-    Returns None instead of crashing so app.py can show friendly UI.
-    """
-    load_env_file()
+def running_on_streamlit_cloud():
+    return os.path.exists("/mount/src") or bool(os.getenv("STREAMLIT_CLOUD"))
 
+# --- SQLite fallback ---
+class _SQLiteCursorWrapper:
+    def __init__(self, cur):
+        self._cur = cur
+    def execute(self, query, params=None):
+        if not isinstance(query, str):
+            query = str(query)
+        q = query
+        # Translate Postgres -> SQLite
+        q = q.replace("SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT")
+        q = q.replace("%s", "?")
+        q = q.replace(" ILIKE ", " LIKE ")
+        if "setval" in q.lower():
+            return self
+        if params is None:
+            params = ()
+        try:
+            if params:
+                return self._cur.execute(q, params)
+            else:
+                return self._cur.execute(q)
+        except sqlite3.OperationalError as e:
+            if "RETURNING" in q:
+                base_q = q.split("RETURNING")[0].strip()
+                if params:
+                    self._cur.execute(base_q, params)
+                else:
+                    self._cur.execute(base_q)
+                self._cur._fake_lastrowid = self._cur.lastrowid
+                return self
+            raise
+    def fetchone(self):
+        if hasattr(self._cur, "_fake_lastrowid"):
+            return (self._cur._fake_lastrowid,)
+        return self._cur.fetchone()
+    def fetchall(self):
+        return self._cur.fetchall()
+    def close(self):
+        return self._cur.close()
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
+
+class _SQLiteConnectionWrapper:
+    def __init__(self, sqlite_conn):
+        self._conn = sqlite_conn
+        self.autocommit = True
+        self.closed = 0
+        self.is_sqlite = True
+    def cursor(self, *a, **kw):
+        return _SQLiteCursorWrapper(self._conn.cursor())
+    def commit(self):
+        try:
+            return self._conn.commit()
+        except Exception:
+            pass
+    def rollback(self):
+        try:
+            return self._conn.rollback()
+        except Exception:
+            pass
+    def close(self):
+        self.closed = 1
+        return self._conn.close()
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+def _get_sqlite_connection():
+    db_path = "/tmp/bank_demo.db" if running_on_streamlit_cloud() else os.path.join(os.path.dirname(__file__), "bank_demo.db")
+    db_path = os.getenv("SQLITE_PATH") or db_path
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(db_path)) if os.path.dirname(db_path) else ".", exist_ok=True)
+    except Exception:
+        pass
+    raw = sqlite3.connect(db_path, check_same_thread=False)
+    raw.row_factory = None
+    try:
+        raw.execute("PRAGMA foreign_keys = ON;")
+    except Exception:
+        pass
+    wrapper = _SQLiteConnectionWrapper(raw)
+    print(f"SQLite fallback active: {db_path} (set DATABASE_URL for Postgres)")
+    return wrapper
+
+def connect_to_database() -> Optional[psycopg2.extensions.connection]:
+    load_env_file()
     database_url = _resolve_database_url()
     if database_url:
         try:
@@ -58,10 +141,7 @@ def connect_to_database() -> Optional[psycopg2.extensions.connection]:
             print("Connected to PostgreSQL via DATABASE_URL!")
             return conn
         except Exception as error:
-            print("Error connecting via DATABASE_URL:", error)
-            return None
-
-    # Try individual secrets / env
+            print(f"Error connecting via DATABASE_URL ({error}), trying SQLite fallback")
     host = (
         get_streamlit_secret("PGHOST")
         or get_streamlit_secret("postgres", "host")
@@ -87,43 +167,30 @@ def connect_to_database() -> Optional[psycopg2.extensions.connection]:
         or get_streamlit_secret("postgres", "password")
         or os.getenv("PGPASSWORD", "1234")
     )
-
-    # On Streamlit Cloud localhost will never work — warn
-    if os.path.exists("/mount/src") and host == "localhost":
-        print(
-            "WARNING: Running on Streamlit Cloud but no DATABASE_URL/pg secrets found. "
-            "Set DATABASE_URL in Manage app → Settings → Secrets."
-        )
-        # still try localhost (will fail) but return None gracefully
-
+    if running_on_streamlit_cloud() and host == "localhost":
+        print("No DATABASE_URL on Cloud - using SQLite fallback for always-on")
+        return _get_sqlite_connection()
     try:
-        connection = psycopg2.connect(
-            host=host,
-            port=port,
-            database=database,
-            user=user,
-            password=password,
-        )
+        connection = psycopg2.connect(host=host, port=port, database=database, user=user, password=password)
         connection.autocommit = True
         print("Connected to PostgreSQL database!")
         return connection
     except Exception as error:
-        print("Error connecting to PostgreSQL database:", error)
-        return None
+        print(f"Error connecting to PostgreSQL ({error}), using SQLite fallback")
+        return _get_sqlite_connection()
 
-# For backward compat: app.py does `from Database import connect_to_database`
-# Also expose `conn` helpers if needed
 def get_connection():
     return connect_to_database()
 
-# Optional global for legacy code — don't crash at import
 try:
     conn = connect_to_database()
 except Exception as e:
     print(f"Database init warning: {e}")
-    conn = None
+    try:
+        conn = _get_sqlite_connection()
+    except Exception:
+        conn = None
 
-# Test the connection
 if __name__ == "__main__":
     c = connect_to_database()
     if c:
