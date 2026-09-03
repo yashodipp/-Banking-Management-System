@@ -876,6 +876,44 @@ def show_logs_table(logs, include_account=True):
 
 
 def render_home_page():
+    # Demo mode for recruiter - no DB needed
+    if st.session_state.get("demo_mode"):
+        metrics = {
+            "accounts": "54 (demo)",
+            "total_balance": "Rs. 12,45,000.00 (demo)",
+            "audit_logs": "312 (demo)",
+            "deposits": "Rs. 18,00,000.00 (demo)",
+        }
+        # convert to display strings already formatted
+        render_page_header(
+            "Banking Management System (Demo Mode)",
+            "Demo data for recruiter - no database setup needed. Full UI visible. Connect real DB via DATABASE_URL to see live data.",
+            "Demo mode",
+        )
+        cols = st.columns(4)
+        with cols[0]:
+            render_metric_card("Total Accounts", metrics["accounts"], "Demo records", "👥")
+        with cols[1]:
+            render_metric_card("Total Balance", metrics["total_balance"], "Demo balance", "💰")
+        with cols[2]:
+            render_metric_card("Audit Logs", metrics["audit_logs"], "Demo logs", "📋")
+        with cols[3]:
+            render_metric_card("Total Deposits", metrics["deposits"], "Demo deposits", "📈")
+        st.info("Demo mode: All pages work for UI preview. Set DATABASE_URL in Secrets to enable real banking operations.")
+        st.markdown('<div class="section-label">Quick Actions (Demo)</div>', unsafe_allow_html=True)
+        action_cols = st.columns(4)
+        with action_cols[0]:
+            st.button("➕ Create Account (demo)", use_container_width=True, disabled=True)
+        with action_cols[1]:
+            st.button("🔐 Customer Login (demo)", use_container_width=True, disabled=True)
+        with action_cols[2]:
+            st.button("💳 Account Dashboard (demo)", use_container_width=True, disabled=True)
+        with action_cols[3]:
+            st.button("🛡️ Audit Logs (demo)", use_container_width=True, disabled=True)
+        st.markdown('<div class="section-label">Recent System Activity (Demo)</div>', unsafe_allow_html=True)
+        st.dataframe([{"Account Number": "BNK123456789", "Holder Name": "Demo User", "Action": "Account Created", "Amount": "Rs. 5,000.00", "Timestamp": "01 Jan 2024"}], use_container_width=True, hide_index=True)
+        return
+
     metrics = fetch_summary_metrics()
 
     render_page_header(
@@ -1236,12 +1274,14 @@ def main():
     database_ready = initialize_tables()
 
     if not database_ready:
-        render_page_header(
-            "Database Connection Required",
-            "The app could not connect to PostgreSQL. Please check Database.py, PostgreSQL service, database name BankData, user, password, and psycopg2 installation.",
-            "Connection status",
-        )
-        st.stop()
+        st.warning("⚠️ Demo mode: Database not connected - showing UI for recruiter without DB setup.")
+        with st.expander("Why demo mode?", expanded=False):
+            st.info("Live DB not configured. App is running so recruiter can see full UI without any DB. To connect real DB, set DATABASE_URL in Streamlit Secrets and reboot.")
+        # Don't stop - let app continue in demo mode so recruiter sees all pages
+        # Render empty metrics instead of stopping
+        st.session_state["demo_mode"] = True
+    else:
+        st.session_state["demo_mode"] = False
 
     selected_page = st.session_state.selected_page
 
